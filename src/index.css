@@ -1,0 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Quicksand:wght@400;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Quicksand", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Fredoka One", cursive;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #F8FAFC;
+}
+
+.heading {
+  font-family: var(--font-heading);
+}

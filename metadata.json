@@ -1,0 +1,6 @@
+{
+  "name": "Ludo Pure",
+  "description": "A multiplayer Ludo board game with AI opponents.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
