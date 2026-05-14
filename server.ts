@@ -112,9 +112,8 @@ async function startServer() {
     io.on('connection', (socket) => {
         socket.on('join_room', async ({ roomId, name }) => {
             let room = await getRoom(roomId);
-            if (!room) { // Should not happen with new getRoom, but just in case
+            if (!room) {
                 room = { id: roomId, players: [], hostId: socket.id, gameState: null };
-                rooms[roomId] = room;
             }
             
             // Assign slot
@@ -131,7 +130,7 @@ async function startServer() {
             room.players.push(player);
             rooms[roomId] = room;
             
-            saveRoomToDb(room); // fire and forget
+            createOrUpdateRoom(room); // fire and forget
             socket.join(roomId);
 
             io.to(roomId).emit('room_update', room);
@@ -155,7 +154,7 @@ async function startServer() {
             const room = rooms[roomId];
             if (room && room.hostId === socket.id) {
                 room.gameState = state;
-                updateGameStateInDb(roomId, state); // async, just gameState
+                createOrUpdateRoom(room); // async
                 io.to(roomId).emit('game_state_update', state);
             }
         });
@@ -168,12 +167,12 @@ async function startServer() {
                     room.players.splice(playerIndex, 1);
                     if (room.players.length === 0) {
                         delete rooms[roomId];
-                        deleteRoomFromDb(roomId);
+                        deleteRoom(roomId);
                     } else {
                         if (room.hostId === socket.id) {
                             room.hostId = room.players[0].id;
                         }
-                        saveRoomToDb(room); // async
+                        createOrUpdateRoom(room); // async
                         io.to(roomId).emit('room_update', room);
                     }
                     break;
