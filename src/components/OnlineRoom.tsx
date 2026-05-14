@@ -38,9 +38,11 @@ export function OnlineRoom({
     const { state: hostGameState, rollDice: hostRoll, moveToken: hostMove } = useLudoGame(hostPlayersConfig);
 
     useEffect(() => {
-        const s = io(import.meta.env.VITE_APP_URL || '/', { autoConnect: true });
+        const serverUrl = import.meta.env.VITE_SERVER_URL || import.meta.env.VITE_APP_URL || undefined;
+        const s = io(serverUrl, { autoConnect: true });
         
         s.on('connect', () => setIsConnected(true));
+        s.on('disconnect', () => setIsConnected(false));
         
         s.on('room_update', (data: RoomData) => {
             setRoom(data);
@@ -68,7 +70,10 @@ export function OnlineRoom({
     }, [hostGameState, room, socket, remoteGameState]);
 
     const joinRoom = (id: string = Math.random().toString(36).substring(2, 6).toUpperCase()) => {
-        if (!socket) return;
+        if (!socket || !isConnected) {
+            alert("Please wait for the server to connect.");
+            return;
+        }
         socket.emit('join_room', { roomId: id, name });
     };
 
@@ -83,7 +88,12 @@ export function OnlineRoom({
     if (!room) {
         return (
             <div className="min-h-screen bg-slate-50 flex items-center justify-center p-8 text-slate-800">
-                <div className="max-w-md w-full bg-white rounded-[40px] p-8 shadow-2xl border border-slate-100 flex flex-col gap-6">
+                <div className="max-w-md w-full bg-white rounded-[40px] p-8 shadow-2xl border border-slate-100 flex flex-col gap-6 relative">
+                    {!isConnected && (
+                        <div className="absolute -top-16 left-0 right-0 bg-amber-100 text-amber-800 px-4 py-2 rounded-xl text-center text-sm font-bold shadow-sm">
+                            Connecting to multiplayer server...
+                        </div>
+                    )}
                     <button onClick={onExit} className="self-start p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"><RotateCcw className="w-5 h-5" /></button>
                     <div className="text-center mb-4">
                         <h1 className="text-3xl heading text-slate-800 tracking-tight">MULTIPLAYER</h1>
@@ -91,7 +101,11 @@ export function OnlineRoom({
 
                     <button
                         onClick={() => joinRoom()}
-                        className="w-full py-4 rounded-2xl font-bold text-lg transition-all shadow-lg flex items-center justify-center gap-2 uppercase tracking-wide bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20 active:scale-95"
+                        disabled={!isConnected}
+                        className={`w-full py-4 rounded-2xl font-bold text-lg transition-all shadow-lg flex items-center justify-center gap-2 uppercase tracking-wide
+                            ${isConnected ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20 active:scale-95' 
+                            : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-70'}
+                        `}
                     >
                         <UserPlus className="w-5 h-5"/> CREATE ROOM
                     </button>
@@ -113,7 +127,7 @@ export function OnlineRoom({
                         />
                         <button
                             onClick={() => joinRoom(roomIdInput)}
-                            disabled={roomIdInput.length < 4}
+                            disabled={roomIdInput.length < 4 || !isConnected}
                             className="bg-indigo-600 text-white rounded-2xl px-6 font-bold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
                         >
                             JOIN
