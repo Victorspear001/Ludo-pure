@@ -5,7 +5,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { createClient } from '@libsql/client';
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 interface Player {
     id: string;
@@ -112,8 +112,9 @@ async function startServer() {
     io.on('connection', (socket) => {
         socket.on('join_room', async ({ roomId, name }) => {
             let room = await getRoom(roomId);
-            if (!room) {
+            if (!room) { // Should not happen with new getRoom, but just in case
                 room = { id: roomId, players: [], hostId: socket.id, gameState: null };
+                rooms[roomId] = room;
             }
             
             // Assign slot
@@ -128,8 +129,9 @@ async function startServer() {
 
             const player = { id: socket.id, name, slot };
             room.players.push(player);
-            await createOrUpdateRoom(room);
+            rooms[roomId] = room;
             
+            saveRoomToDb(room); // fire and forget
             socket.join(roomId);
 
             io.to(roomId).emit('room_update', room);
@@ -138,9 +140,9 @@ async function startServer() {
             }
         });
 
-        socket.on('start_game', async (roomId) => {
-            const room = await getRoom(roomId);
-            if (room) {
+        socket.on('start_game', (roomId) => {
+            const room = rooms[roomId];
+            if (room && room.hostId === socket.id) {
                 io.to(roomId).emit('game_started');
             }
         });
@@ -149,50 +151,32 @@ async function startServer() {
             socket.to(roomId).emit('game_action', { action, payload });
         });
 
-        socket.on('broadcast_state', async ({ roomId, state }) => {
-            const room = await getRoom(roomId);
+        socket.on('broadcast_state', ({ roomId, state }) => {
+            const room = rooms[roomId];
             if (room && room.hostId === socket.id) {
                 room.gameState = state;
-                await createOrUpdateRoom(room);
+                updateGameStateInDb(roomId, state); // async, just gameState
                 io.to(roomId).emit('game_state_update', state);
             }
         });
 
-        socket.on('disconnect', async () => {
-            if (db) {
-                const ps = await db.execute({ sql: "SELECT roomId FROM players WHERE id = ?", args: [socket.id] });
-                if (ps.rows.length > 0) {
-                    const roomId = ps.rows[0].roomId as string;
-                    const room = await getRoom(roomId);
-                    if (room) {
-                        room.players = room.players.filter(p => p.id !== socket.id);
-                        if (room.players.length === 0) {
-                            await deleteRoom(roomId);
-                        } else {
-                            if (room.hostId === socket.id) {
-                                room.hostId = room.players[0].id;
-                            }
-                            await createOrUpdateRoom(room);
-                            io.to(roomId).emit('room_update', room);
+        socket.on('disconnect', () => {
+            for (const roomId in rooms) {
+                const room = rooms[roomId];
+                const playerIndex = room.players.findIndex(p => p.id === socket.id);
+                if (playerIndex !== -1) {
+                    room.players.splice(playerIndex, 1);
+                    if (room.players.length === 0) {
+                        delete rooms[roomId];
+                        deleteRoomFromDb(roomId);
+                    } else {
+                        if (room.hostId === socket.id) {
+                            room.hostId = room.players[0].id;
                         }
+                        saveRoomToDb(room); // async
+                        io.to(roomId).emit('room_update', room);
                     }
-                }
-            } else {
-                for (const roomId in rooms) {
-                    const room = rooms[roomId];
-                    const playerIndex = room.players.findIndex(p => p.id === socket.id);
-                    if (playerIndex !== -1) {
-                        room.players.splice(playerIndex, 1);
-                        if (room.players.length === 0) {
-                            delete rooms[roomId];
-                        } else {
-                            if (room.hostId === socket.id) {
-                                room.hostId = room.players[0].id;
-                            }
-                            io.to(roomId).emit('room_update', room);
-                        }
-                        break;
-                    }
+                    break;
                 }
             }
         });

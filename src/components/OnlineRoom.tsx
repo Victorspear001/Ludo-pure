@@ -35,7 +35,7 @@ export function OnlineRoom({
         { id: 2, type: 'human' },
         { id: 3, type: 'human' }
     ]);
-    const { state: hostGameState, rollDice: hostRoll, moveToken: hostMove } = useLudoGame(hostPlayersConfig);
+    const { state: hostGameState, rollDice: hostRoll, moveToken: hostMove, resetGame: hostReset } = useLudoGame(hostPlayersConfig);
 
     useEffect(() => {
         const serverUrl = import.meta.env.VITE_SERVER_URL || import.meta.env.VITE_APP_URL || undefined;
@@ -56,6 +56,11 @@ export function OnlineRoom({
             // Received from non-hosts
             if (action === 'roll') hostRoll();
             if (action === 'move') hostMove(payload);
+        });
+
+        // Whenever Host gets starting signal
+        s.on('game_started', () => {
+            // Signal from host to everyone
         });
 
         setSocket(s);
@@ -79,10 +84,27 @@ export function OnlineRoom({
 
     const startGame = () => {
         if (!socket || !room) return;
+        if (room.players.length < 2) {
+            alert("Need at least 2 players to start!");
+            return;
+        }
         
         // Match player slots to config
-        setRemoteGameState(hostGameState); // Signal game start
-        socket.emit('broadcast_state', { roomId: room.id, state: hostGameState });
+        const newPlayersConfig: PlayerConfig[] = [0, 1, 2, 3].map(slot => ({
+            id: slot,
+            type: room.players.some(p => p.slot === slot) ? 'human' : 'none'
+        }));
+        
+        hostReset(newPlayersConfig);
+        
+        // Use timeout to allow hostReset to take effect before broadcasting
+        setTimeout(() => {
+            // Need to set remoteGameState to the NEW hostGameState, but hostGameState might not be updated inside this closure yet!
+            // However, setting it to a dummy object enables the broadcast effect
+            setRemoteGameState({} as GameState); 
+            socket.emit('start_game', room.id); 
+            // the state will naturally broadcast when hostGameState updates
+        }, 100);
     };
 
     if (!room) {
@@ -139,9 +161,11 @@ export function OnlineRoom({
     }
 
     const isHost = socket?.id === room.hostId;
-    const activeState = (isHost && remoteGameState !== null) ? hostGameState : remoteGameState;
+    // remoteGameState is set to {} temporarily on start to trigger the broadcast effect
+    const isGameStarted = remoteGameState !== null && (Object.keys(remoteGameState).length > 0 || isHost); 
+    const activeState = (isHost && isGameStarted) ? hostGameState : remoteGameState;
 
-    if (activeState) {
+    if (activeState && Object.keys(activeState).length > 0) {
         const mySlot = room.players.find(p => p.id === socket?.id)?.slot ?? 0;
         
         // Create custom wrapped rollDice and moveToken
@@ -190,7 +214,12 @@ export function OnlineRoom({
                 {isHost && (
                     <button
                         onClick={startGame}
-                        className="w-full py-4 rounded-2xl font-bold text-lg transition-all shadow-lg uppercase tracking-wide bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20 active:scale-95"
+                        disabled={room.players.length < 2}
+                        className={`w-full py-4 rounded-2xl font-bold text-lg transition-all shadow-lg uppercase tracking-wide
+                            ${room.players.length >= 2 
+                                ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20 active:scale-95' 
+                                : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-70'}
+                        `}
                     >
                         START GAME
                     </button>

@@ -110,6 +110,28 @@ export function useLudoGame(initialPlayers: PlayerConfig[]) {
         });
     }, []);
 
+    const resetGame = useCallback((players: PlayerConfig[]) => {
+        const tokens: Token[] = [];
+        players.forEach(p => {
+            if (p.type !== 'none') {
+                for(let i=0; i<4; i++) {
+                    tokens.push({ id: p.id * 4 + i, playerId: p.id, progress: -1 });
+                }
+            }
+        });
+        setState({
+            players,
+            tokens,
+            turn: players.find(p => p.type !== 'none')?.id ?? 0,
+            dice: null,
+            isRolling: false,
+            hasRolled: false,
+            validTokens: [],
+            winner: null,
+            movingToken: null
+        });
+    }, []);
+
     // Animation Tick
     useEffect(() => {
         if (!state.movingToken) return;
@@ -209,5 +231,5 @@ export function useLudoGame(initialPlayers: PlayerConfig[]) {
         }
     }, [state.hasRolled, state.isRolling, state.validTokens, state.turn, state.players, state.winner, state.movingToken, moveToken, passTurn]);
 
-    return { state, rollDice, moveToken };
+    return { state, rollDice, moveToken, resetGame };
 }
